@@ -57,6 +57,20 @@ fn main() {
             continue;
         }
 
+        else if arg == "statefulset" {
+            let d = args_it.next().unwrap_or_else(|| {
+                eprint!("expected a statefulset name");
+                std::process::exit(1);
+            });
+            target.push_str("deployment/");
+            target.push_str(d.as_str());
+            continue;
+        }
+        
+        else if arg.starts_with("deployment/")  || arg.starts_with("statefulset/"){
+            target.push_str(arg);  
+        }
+
         else {
             match parse_op(&arg) {
                 Some(s) => {
