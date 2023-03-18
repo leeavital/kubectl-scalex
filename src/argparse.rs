@@ -43,6 +43,23 @@ impl  Parsed {
                         }
                     }
                 },
+                "--help" => {
+                    let s =r###"
+                    kubectl scalex is a wrapper around kubectl scale, with the added functionality of expressing how much you want
+                    to scale by instead of specifying a specific number.
+
+                    For example, use the following to scale up by 50%:
+
+                        kubectl scalex deployment/mything +50%
+                    
+                    Or the following to scale down by two replicas:
+
+                        kubectl scalex deployment/mything -2
+
+                    All flags, including --replicas, that work with kubectl-scale will also work with scalex. Use kubectl scale --help for more information.
+                    "###;
+                    return  Err(unindent(s));
+                },
                 _ => {
                     if is_single_kube_flag(arg) {
                         kubectl_flags.push(arg.to_string());
@@ -86,6 +103,7 @@ impl  Parsed {
     }
     
 }
+
 
 
 fn consume_or_error(it: &mut Iter<String>, err_msg: &str) -> Result<String, String>
@@ -158,7 +176,6 @@ fn parse_op(s: &str) -> Option<impl FnOnce(i32) -> i32>
         unsigned = x;
     }
 
-
     if let Some(n) = unsigned.strip_suffix("%") {
         let parsed  : f32 = n.parse().ok()?;
         factor = (100.0 + (direction as f32 * parsed)) / 100.0;
@@ -170,6 +187,39 @@ fn parse_op(s: &str) -> Option<impl FnOnce(i32) -> i32>
     return Some( move |x| {
         return ((x as f32 * factor).floor() + absolute_change as f32) as i32;
     });
+}
+
+
+fn unindent(source: &str) -> String {
+    let mut lines = source.lines();
+    lines.next(); // take first empty line
+    let first_line = lines.next().unwrap();
+
+    println!("first line {first_line}");
+    let mut prefix = String::new();
+    for c in first_line.chars() {
+        if c.is_whitespace() {
+            prefix.push(c);
+        } else {
+            break;
+        }
+    }
+    println!("{} prefix", prefix);
+
+
+    let mut unindented = String::new();
+    unindented.push_str(first_line.strip_prefix(prefix.as_str()).unwrap());
+    unindented.push('\n');
+
+    for l in lines {
+        unindented.push_str(l.strip_prefix(prefix.as_str()).unwrap_or(l));
+        unindented.push('\n');
+    }
+
+
+    unindented
+
+
 }
 
 
