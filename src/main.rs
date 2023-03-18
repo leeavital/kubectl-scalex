@@ -1,88 +1,60 @@
-use std::vec;
-
-
+use std::{vec, slice::Iter};
 
 
 fn main() {
-
-
-    // TODO: make this static
-    let flags = vec![
-        ("-n", "--namespace", "--namespace="),
-        ("-c", "--context", "--context="),
-
-    ];
-
     let args : Vec<String> = std::env::args().collect();
     let mut args_it = args.iter();
     args_it.next();
 
-    let mut kubectl_flags = Vec::new();
+    let mut kubectl_flags : Vec<String> = Vec::new();
     let mut target = String::new();
     let mut dry_run = false;
     let mut scale_op : Option<Box<dyn FnOnce(i32) -> i32>> = None;
 
     while let Some(arg) = args_it.next() {
-
-        let mut did_parse = false;
-        for (short, long, single) in flags.iter() {
-            if arg == short || arg == long {
-                let flag_value = args_it.next().unwrap_or_else(|| {
-                    eprintln!("missing value for {arg}");
+        match arg.as_str() {
+            "--dry-run" => {
+                dry_run = true;
+            },
+            "deployment" => {
+                let v = consume_or_error(&mut args_it, "expected name for deployment");
+                target.push_str("deployment/");
+                target.push_str(v.as_str());
+            },
+            "statefulset" => {
+                let v = consume_or_error(&mut args_it, "expected name for statefulset");
+                target.push_str("statefulset/");
+                target.push_str(v.as_str());
+            },
+            "--replicas" => {
+                let v = consume_or_error(&mut args_it, "expected value for replicas flag");
+                let replicas: i32  = v.parse().unwrap_or_else(|_| {
+                    eprintln!("expected integer value --replicas");
                     std::process::exit(1);
                 });
-                kubectl_flags.push(arg.clone());
-                kubectl_flags.push(flag_value.clone());
-                did_parse = true;
-            } else if arg.starts_with(single) {
-                did_parse = true;
-                kubectl_flags.push(arg.clone());
-            }
-        }
-        if did_parse {
-            continue;
-        }
 
-        if arg == "--dry-run" {
-            dry_run = true;
-        }
-
-        else if arg == "deployment" {
-            let d = args_it.next().unwrap_or_else(|| {
-                eprint!("expected a deployment name");
-                std::process::exit(1);
-            });
-            target.push_str("deployment/");
-            target.push_str(d.as_str());
-            continue;
-        }
-
-        else if arg == "statefulset" {
-            let d = args_it.next().unwrap_or_else(|| {
-                eprint!("expected a statefulset name");
-                std::process::exit(1);
-            });
-            target.push_str("deployment/");
-            target.push_str(d.as_str());
-            continue;
-        }
-        
-        else if arg.starts_with("deployment/")  || arg.starts_with("statefulset/"){
-            target.push_str(arg);  
-        }
-
-        else {
-            match parse_op(&arg) {
-                Some(s) => {
-                    scale_op = Some(Box::from(s));
-                },
-                None => {
-                    eprint!("could not parse operation: {}", &arg);
-                    std::process::exit(1);
+                scale_op = Some(Box::from(move |_: i32| { replicas }));
+            },
+            _ => {
+                if is_single_kube_flag(arg) {
+                    kubectl_flags.push(arg.to_string());
+                } else if is_valued_kube_flag(arg) {
+                    let emsg = format!("expected value for {}", arg);
+                    let v = consume_or_error(&mut args_it, &emsg);
+                    kubectl_flags.push(arg.to_string());
+                    kubectl_flags.push(v.to_string());
+                } else if arg.starts_with("deployment/") || arg.starts_with("statefulset/") {
+                    target.push_str(arg);
+                } else {
+                    scale_op = match parse_op(arg) {
+                        None => None, 
+                        Some(f) => Some(Box::from(f)),
+                    }
                 }
             }
         }
     }
+
 
     if target.len() == 0 {
         eprint!("missing target (deployment or statefulset)");
@@ -91,6 +63,7 @@ fn main() {
 
     if scale_op.is_none() {
         eprint!("scaling operation was not specified");
+        std::process::exit(1);
     }
 
     let kubectl_part = kubectl_flags.join(" ");
@@ -100,6 +73,63 @@ fn main() {
     println!("kubectl {kubectl_part} scale {target} --replicas {target_replicas}");
 
     println!("{:?}", args);
+}
+
+const KUBE_SHORT_FLAGS : [&str; 2] = [
+    "-n", // namespace
+    "-c", // context
+];
+
+const KUBE_LONG_FLAGS : [&str; 25] = [
+    "--as",
+    "--as-group",
+    "--cache-dir",
+    "--certificate-authority" ,
+    "--client-certificate",
+    "--client-key",
+    "--cluster",
+    "--context",
+    "--disable-compression",
+    "--insecure-skip-tls-verify",
+    "--kubeconfig",
+    "--log-flush-frequency",
+    "--match-server-version",
+    "--namespace",
+    "--password",
+    "--profile",
+    "--profile-output",
+    "--server",
+    "--tls-server-name",
+    "--token",
+    "--user",
+    "--username",
+    "--v",
+    "--vmodule",
+    "--warnings-as-errors",
+];
+
+fn is_single_kube_flag(s: &str) -> bool {
+    for f in KUBE_LONG_FLAGS {
+        if s.starts_with(f) && s.chars().nth(f.len()) == Some('=') {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn is_valued_kube_flag(s: &str) -> bool {
+    return KUBE_SHORT_FLAGS.contains(&s) || KUBE_LONG_FLAGS.contains(&s);
+}
+
+fn consume_or_error(it: &mut Iter<String>, err_msg: &str) -> String 
+{
+    match it.next() {
+        Some(v) => v.to_string(),
+        None => {
+            eprint!("{}", err_msg);
+            std::process::exit(1);
+        }
+    }
 }
 
 
@@ -134,12 +164,12 @@ fn parse_op(s: &str) -> Option<impl FnOnce(i32) -> i32>
 
 #[cfg(test)]
 mod test {
-    use crate::parse_op;
+    use crate::{parse_op, is_single_kube_flag};
 
 
 
     #[test]
-    fn test_parse() {
+    fn test_parse_op() {
         fn test_expr(i: i32, xform: &str, expected: Option<i32>) {
             
             let actual = parse_op(xform).map(|scale| scale(i));
@@ -155,5 +185,11 @@ mod test {
         test_expr(10, "3", Some(13));
         test_expr(10, "+5", Some(15));
         test_expr(10, "-6", Some(4));
+    }
+
+    #[test]
+    fn test_flag() {
+        assert!(is_single_kube_flag("--namespace=asdfs"));
+        assert!(!is_single_kube_flag("--namespaceasdfs"));
     }
 }
