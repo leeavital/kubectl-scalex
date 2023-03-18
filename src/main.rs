@@ -1,4 +1,4 @@
-use std::{vec, slice::Iter};
+use std::{slice::Iter, process::Command};
 
 
 fn main() {
@@ -66,11 +66,38 @@ fn main() {
         std::process::exit(1);
     }
 
-    let kubectl_part = kubectl_flags.join(" ");
-    println!("kubectl {kubectl_part} get {target}");
-    let replicas_for_deployment = 60;
+    let mut get_cmd = Command::new("kubectl");
+    get_cmd
+        .args(&kubectl_flags)
+        .arg("get")
+        .arg(&target)
+        .arg("-o")
+        .arg("custom-columns=REPLICAS:.spec.replicas")
+        .arg("--no-headers");
+
+    let output = get_cmd.output().unwrap_or_else(|e| {
+        eprintln!("failed to get number of replicas: {e}");
+        std::process::exit(1);
+    });
+
+    let replicas_for_deployment: i32 = String::from_utf8(output.stdout).unwrap().trim()
+        .parse().unwrap();
     let target_replicas = scale_op.unwrap()(replicas_for_deployment);
-    println!("kubectl {kubectl_part} scale {target} --replicas {target_replicas}");
+
+    let mut scale_cmd = Command::new("kubectl");
+    scale_cmd
+        .args(kubectl_flags)
+        .arg("scale")
+        .arg(target)
+        .arg("--replicas")
+        .arg(target_replicas.to_string());
+
+    if dry_run {
+        eprintln!("would scale from {replicas_for_deployment} to {target_replicas}");
+        eprint!("{:?}", scale_cmd);
+    }  else {
+        todo!("non-dry run not implemented");
+    }
 
     println!("{:?}", args);
 }
