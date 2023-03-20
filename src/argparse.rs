@@ -77,7 +77,7 @@ impl Parsed {
             }
         }
 
-        if target.len() == 0 {
+        if target.is_empty() {
             return Err(String::from("missing target (deployment or statefulset)"));
         }
 
@@ -86,12 +86,12 @@ impl Parsed {
             std::process::exit(1);
         }
 
-        return Ok(Parsed {
+        Ok(Parsed {
             kube_args: kubectl_flags,
-            dry_run: dry_run,
+            dry_run,
             scale_op: scale_op.unwrap(),
-            target: target,
-        });
+            target,
+        })
     }
 }
 
@@ -141,11 +141,11 @@ fn is_single_kube_flag(s: &str) -> bool {
             return true;
         }
     }
-    return false;
+    false
 }
 
 fn is_valued_kube_flag(s: &str) -> bool {
-    return KUBE_SHORT_FLAGS.contains(&s) || KUBE_LONG_FLAGS.contains(&s);
+    KUBE_SHORT_FLAGS.contains(&s) || KUBE_LONG_FLAGS.contains(&s)
 }
 
 fn parse_op(s: &str) -> Option<impl FnOnce(i32) -> i32> {
@@ -153,14 +153,14 @@ fn parse_op(s: &str) -> Option<impl FnOnce(i32) -> i32> {
     let mut absolute_change = 0;
     let mut factor = 1.0;
     let mut unsigned = s;
-    if let Some(x) = s.strip_prefix("-") {
+    if let Some(x) = s.strip_prefix('-') {
         direction = -1;
         unsigned = x;
-    } else if let Some(x) = s.strip_prefix("+") {
+    } else if let Some(x) = s.strip_prefix('+') {
         unsigned = x;
     }
 
-    if let Some(n) = unsigned.strip_suffix("%") {
+    if let Some(n) = unsigned.strip_suffix('%') {
         let parsed: f32 = n.parse().ok()?;
         factor = (100.0 + (direction as f32 * parsed)) / 100.0;
     } else {
@@ -168,9 +168,9 @@ fn parse_op(s: &str) -> Option<impl FnOnce(i32) -> i32> {
         absolute_change = direction * parsed;
     }
 
-    return Some(move |x| {
-        return ((x as f32 * factor).floor() + absolute_change as f32) as i32;
-    });
+    Some(move |x| {
+        ((x as f32 * factor).floor() + absolute_change as f32) as i32
+    })
 }
 
 fn unindent(source: &str) -> String {
