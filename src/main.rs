@@ -32,20 +32,29 @@ fn main() {
 
     let replicas_for_deployment: i32 = String::from_utf8(output.stdout).unwrap().trim()
         .parse().unwrap();
-    let target_replicas = (args.scale_op)(replicas_for_deployment);
+    let target_replicas = (args.scale_op)(replicas_for_deployment).to_string();
 
-    let mut scale_cmd = Command::new("kubectl");
-    scale_cmd
-        .args(&args.kube_args)
-        .arg("scale")
-        .arg(&args.target)
-        .arg("--replicas")
-        .arg(target_replicas.to_string());
+
+    let mut scale_args : Vec<&str> = Vec::new();
+    scale_args.extend(args.kube_args.iter().map(|x| x.as_str()));
+    scale_args.push("scale");
+    scale_args.push(&args.target);
+    scale_args.push("--target");
+    scale_args.push(&target_replicas);
+
 
     if args.dry_run {
         eprintln!("would scale from {replicas_for_deployment} to {target_replicas}");
-        eprint!("{:?}", scale_cmd);
+        eprint!("kubectl {}", scale_args.join(" ") );
     }  else {
+        let mut scale_cmd = Command::new("kubectl");
+        scale_cmd .args(scale_args);
+
+        scale_cmd.output().unwrap_or_else(|e| {
+            eprintln!("scale cmd failed: {:?}: {}", scale_cmd, e);
+            std::process::exit(1);
+        });
+        
         todo!("non-dry run not implemented");
     }
 }
