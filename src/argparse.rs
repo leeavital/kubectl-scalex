@@ -178,7 +178,6 @@ fn unindent(source: &str) -> String {
     lines.next(); // take first empty line
     let first_line = lines.next().unwrap();
 
-    println!("first line {first_line}");
     let mut prefix = String::new();
     for c in first_line.chars() {
         if c.is_whitespace() {
@@ -187,7 +186,6 @@ fn unindent(source: &str) -> String {
             break;
         }
     }
-    println!("{} prefix", prefix);
 
     let mut unindented = String::new();
     unindented.push_str(first_line.strip_prefix(prefix.as_str()).unwrap());
